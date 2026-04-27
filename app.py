@@ -4,7 +4,7 @@ import os
 from openai import OpenAI
 
 # -------------------------
-# Page Config (must be first)
+# Page Config
 # -------------------------
 st.set_page_config(
     page_title="AI Customer Reply Assistant",
@@ -19,9 +19,44 @@ if "reply" not in st.session_state:
     st.session_state.reply = ""
 
 # -------------------------
-# OpenAI Client (secure)
+# OpenAI Client
 # -------------------------
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# -------------------------
+# Detection Function
+# -------------------------
+def detect_product_and_intent(message, product_list):
+    product_names = "\n".join(product_list)
+
+    prompt = f"""
+    Identify:
+    1. Product from list
+    2. Intent type:
+       - damaged
+       - shipping
+       - refund
+       - general
+
+    Products:
+    {product_names}
+
+    Message:
+    {message}
+
+    Return format:
+    product: <product name>
+    intent: <intent>
+    confidence: <0-100>
+    """
+
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return response.choices[0].message.content
+
 
 # -------------------------
 # Header
@@ -29,7 +64,6 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 st.markdown("## 🤖 AI Customer Reply Assistant")
 st.caption("Smart replies for e-commerce sellers")
 
-# Layout
 col1, col2 = st.columns([1, 2])
 
 # -------------------------
@@ -44,7 +78,7 @@ else:
     config = {"products": []}
 
 # =========================
-# LEFT SIDE (Product Setup)
+# LEFT SIDE
 # =========================
 with col1:
     st.markdown("### 📦 Product Setup")
@@ -74,18 +108,20 @@ with col1:
 
     st.subheader("Select Product")
 
-    if len(config["products"]) == 0:
+    no_product = len(config["products"]) == 0
+
+    if no_product:
         st.warning("Please add at least one product first.")
-        st.stop()
 
     product_names = [p["name"] for p in config["products"]]
 
-    selected_name = st.selectbox("Choose a product", product_names)
-
-    selected_product = next(
-        (p for p in config["products"] if p["name"] == selected_name),
-        None
-    )
+    selected_product = None
+    if not no_product:
+        selected_name = st.selectbox("Choose a product", product_names)
+        selected_product = next(
+            (p for p in config["products"] if p["name"] == selected_name),
+            None
+        )
 
     st.subheader("Manage Products")
 
@@ -121,7 +157,7 @@ with col1:
                     st.rerun()
 
 # =========================
-# RIGHT SIDE (Customer)
+# RIGHT SIDE
 # =========================
 with col2:
     st.markdown("### 💬 Customer Message")
@@ -134,30 +170,63 @@ with col2:
 
     if st.button("✨ Generate Reply", use_container_width=True, type="primary"):
 
-        # 🛑 Smart validation
+        if no_product:
+            st.warning("Please add a product first.")
+            st.stop()
+
         if not customer_message.strip():
             st.warning("Please paste a customer message.")
             st.stop()
 
-        prompt = f"""
-        You are a professional e-commerce seller.
-
-        Product: {selected_product["name"]}
-        Shipping: {selected_product["shipping"]}
-        Return policy: {selected_product["returns"]}
-
-        Rules:
-        - Friendly and human tone
-        - Apologize if needed
-        - Provide clear solution
-        - Keep under 80 words
-
-        Customer message:
-        {customer_message}
-        """
-
-        # 🛡️ Smart error handling
         try:
+            # 🔍 Detect product + intent
+            product_list = [p["name"] for p in config["products"]]
+            detection = detect_product_and_intent(customer_message, product_list)
+
+            detected_product = selected_product["name"]
+            intent = "general"
+            confidence = 0
+
+            for line in detection.split("\n"):
+                if "product:" in line.lower():
+                    detected_product = line.split(":")[1].strip()
+                if "intent:" in line.lower():
+                    intent = line.split(":")[1].strip()
+                if "confidence:" in line.lower():
+                    confidence = int(line.split(":")[1].strip())
+
+            matched_product = next(
+                (p for p in config["products"] if p["name"].lower() in detected_product.lower()),
+                selected_product
+            )
+
+            # 🧠 Show detection
+            st.info(f"Detected: {matched_product['name']} | Issue: {intent} | Confidence: {confidence}%")
+
+            # 🚨 Human fallback
+            if confidence < 60:
+                st.warning("⚠️ Low confidence. Recommend human review.")
+
+            # 🧠 Generate reply
+            prompt = f"""
+            You are a professional e-commerce seller.
+
+            Product: {matched_product["name"]}
+            Shipping: {matched_product["shipping"]}
+            Return policy: {matched_product["returns"]}
+
+            Customer intent: {intent}
+
+            Rules:
+            - Friendly and human tone
+            - Apologize if needed
+            - Provide clear solution
+            - Keep under 80 words
+
+            Customer message:
+            {customer_message}
+            """
+
             response = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=[{"role": "user", "content": prompt}]
