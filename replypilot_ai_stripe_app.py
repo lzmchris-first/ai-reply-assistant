@@ -21,8 +21,16 @@ st.set_page_config(
 # =========================
 st.markdown("""
 <style>
-    .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
-    .app-title { font-size: 2.2rem; font-weight: 800; margin-bottom: 0.2rem; }
+    .block-container {
+    padding-top: 2.5rem;
+    padding-bottom: 2rem;}
+   .app-title {
+    font-size: 2.2rem;
+    font-weight: 800;
+    line-height: 1.35;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+    margin-bottom: 0.3rem;}
     .app-subtitle { color: #64748b; font-size: 1rem; margin-bottom: 1.5rem; }
     .card {
         background: #ffffff;
